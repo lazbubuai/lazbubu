@@ -1,0 +1,22 @@
+{
+    "name": "lsd-contracts",
+    "version": "1.0.0",
+    "description": "",
+    "main": "index.js",
+    "scripts": {
+        "update-abis": "ts-node update-abis.ts",
+        "transpile": "TS_NODE_TRANSPILE_ONLY=1 hardhat compile",
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "author": "",
+    "license": "ISC",
+    "devDependencies": {
+        "@nomicfoundation/hardhat-ethers": "^3.0.4",
+        "@nomicfoundation/hardhat-toolbox": "^3.0.0",
+        "@openzeppelin/contracts": "^5.4.0",
+        "dotenv": "^16.3.1",
+        "ethers": "^6.7.1",
+        "hardhat": "^2.20.1",
+        "solidity-docgen": "^0.6.0-beta.36"
+    }
+}
