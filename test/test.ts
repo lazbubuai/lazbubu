@@ -11,40 +11,40 @@ describe("Lazbubu", () => {
         const accounts = await ethers.getSigners();
         const [deployer, signer, user] = accounts;
 
-        const { permitVerifier, lazbubu } = await deploy(ethers, signer.address, "https://lazbubu.com/token/{id}");
+        const { lazbubu } = await deploy(ethers, signer.address, "https://lazbubu.com/token/{id}");
 
-        return { deployer, signer, user, permitVerifier, lazbubu };
+        return { deployer, signer, user, lazbubu };
     }
 
     const tokenIdForMint = (address: string) => (1n << 255n) + BigInt(address);
 
-    async function mintWithPermit(toSigner: any, signer: any, lazbubu: any, permitVerifier: any, fileUrl = "https://lazbubu.com/token/1") {
+    async function mintWithPermit(toSigner: any, signer: any, lazbubu: any, fileUrl = "https://lazbubu.com/token/1") {
         const tokenId = tokenIdForMint(toSigner.address);
-        const nonce = Number(await permitVerifier.nextPermitNonce(tokenId));
+        const nonce = Number(await lazbubu.nextPermitNonce(tokenId));
         const dataHash = solidityPackedKeccak256(["address", "string"], [toSigner.address, fileUrl]);
         const expire = Math.floor(Date.now() / 1000) + 3600;
-        const permit = await signPermit(signer, nonce, PERMIT_TYPE_MINT, dataHash, expire);
+        const chainId = (await ethers.provider.getNetwork()).chainId;
+        const permit = await signPermit(signer, nonce, PERMIT_TYPE_MINT, dataHash, expire, await lazbubu.getAddress(), Number(chainId));
         await lazbubu.mint(toSigner.address, fileUrl, permit);
         const mintedId = await lazbubu.currentTokenId();
         return { mintedId, fileUrl, expire };
     }
 
     it("should be deployed and initialized correctly", async () => {
-        const { deployer, signer, permitVerifier, lazbubu } = await loadFixture(deployFixture);
+        const { deployer, signer, lazbubu } = await loadFixture(deployFixture);
         expect(await lazbubu.uri(0)).to.equal("https://lazbubu.com/token/{id}");
-        expect(await lazbubu.permitVerifier()).to.equal(permitVerifier.target);
         expect(await lazbubu.currentTokenId()).to.equal(0);
-        expect(await (permitVerifier as any)["signer"]()).to.equal(signer.address);
-        expect(await permitVerifier.serviceTo()).to.equal(lazbubu.target);
-        expect(await permitVerifier.admin()).to.equal(deployer.address);
+        expect(await lazbubu.signer()).to.equal(signer.address);
+        expect(await lazbubu.admin()).to.equal(deployer.address);
     });
 
     it("should mint a token", async () => {
-        const { signer, user, lazbubu, permitVerifier } = await loadFixture(deployFixture);
+        const { signer, user, lazbubu } = await loadFixture(deployFixture);
         const dataStr = "https://lazbubu.com/token/1";
         const dataHash = solidityPackedKeccak256(['address', 'string'], [user.address, dataStr]);
         const expire = Math.floor(Date.now() / 1000) + 3600;
-        const permit = await signPermit(signer, 0, PERMIT_TYPE_MINT, dataHash, expire);
+        const chainId = (await ethers.provider.getNetwork()).chainId;
+        const permit = await signPermit(signer, 0, PERMIT_TYPE_MINT, dataHash, expire, await lazbubu.getAddress(), Number(chainId));
         await expect(lazbubu.mint(user.address, dataStr, permit)).to.emit(lazbubu, "TokenMinted").withArgs(user.address, 1, dataStr);
         expect(await lazbubu.balanceOf(user.address, 1)).to.equal(1);
         const states = await lazbubu.states(1);
@@ -58,61 +58,65 @@ describe("Lazbubu", () => {
         expect(states.personality).to.equal("");
         expect(await lazbubu.fileUrl(1)).to.equal(dataStr);
         const tokenIdForPermit = tokenIdForMint(user.address);
-        expect(await permitVerifier.nextPermitNonce(tokenIdForPermit)).to.equal(1);
+        expect(await lazbubu.nextPermitNonce(tokenIdForPermit)).to.equal(1);
     });
 
     it("should reject mint with invalid permit", async () => {
-        const { signer, user, lazbubu, permitVerifier } = await loadFixture(deployFixture);
+        const { signer, user, lazbubu } = await loadFixture(deployFixture);
         const attacker = (await ethers.getSigners())[3];
         const dataStr = "https://lazbubu.com/token/1";
         const dataHash = solidityPackedKeccak256(["address", "string"], [user.address, dataStr]);
         const expire = Math.floor(Date.now() / 1000) + 3600;
-        const permit = await signPermit(attacker, 0, PERMIT_TYPE_MINT, dataHash, expire);
-        await expect(lazbubu.mint(user.address, dataStr, permit)).to.be.revertedWithCustomError(permitVerifier, "InvalidPermitSignature");
+        const chainId = (await ethers.provider.getNetwork()).chainId;
+        const permit = await signPermit(attacker, 0, PERMIT_TYPE_MINT, dataHash, expire, await lazbubu.getAddress(), Number(chainId));
+        await expect(lazbubu.mint(user.address, dataStr, permit)).to.be.revertedWithCustomError(lazbubu, "InvalidPermitSignature");
     });
 
     it("should reject mint when permit expired", async () => {
-        const { signer, user, lazbubu, permitVerifier } = await loadFixture(deployFixture);
+        const { signer, user, lazbubu } = await loadFixture(deployFixture);
         const dataStr = "https://lazbubu.com/token/1";
         const dataHash = solidityPackedKeccak256(["address", "string"], [user.address, dataStr]);
         const expire = Math.floor(Date.now() / 1000) - 10;
-        const permit = await signPermit(signer, 0, PERMIT_TYPE_MINT, dataHash, expire);
-        await expect(lazbubu.mint(user.address, dataStr, permit)).to.be.revertedWithCustomError(permitVerifier, "PermitExpired");
+        const chainId = (await ethers.provider.getNetwork()).chainId;
+        const permit = await signPermit(signer, 0, PERMIT_TYPE_MINT, dataHash, expire, await lazbubu.getAddress(), Number(chainId));
+        await expect(lazbubu.mint(user.address, dataStr, permit)).to.be.revertedWithCustomError(lazbubu, "PermitExpired");
     });
 
     it("should create adventures and memories with valid permits", async () => {
-        const { signer, user, lazbubu, permitVerifier } = await loadFixture(deployFixture);
-        const { mintedId } = await mintWithPermit(user, signer, lazbubu, permitVerifier);
+        const { signer, user, lazbubu } = await loadFixture(deployFixture);
+        const { mintedId } = await mintWithPermit(user, signer, lazbubu);
 
-        const adventureNonce = Number(await permitVerifier.nextPermitNonce(mintedId));
+        const chainId = (await ethers.provider.getNetwork()).chainId;
+        const adventureNonce = Number(await lazbubu.nextPermitNonce(mintedId));
         const adventureType = 2;
         const adventureContent = 12345;
         const adventureHash = solidityPackedKeccak256(["uint256", "uint8", "uint256"], [mintedId, adventureType, adventureContent]);
-        const adventurePermit = await signPermit(signer, adventureNonce, PERMIT_TYPE_ADVENTURE, adventureHash, Math.floor(Date.now() / 1000) + 3600);
+        const adventurePermit = await signPermit(signer, adventureNonce, PERMIT_TYPE_ADVENTURE, adventureHash, Math.floor(Date.now() / 1000) + 3600, await lazbubu.getAddress(), Number(chainId));
         await expect(lazbubu.adventure(mintedId, adventureType, adventureContent, adventurePermit))
             .to.emit(lazbubu, "AdventureCreated")
             .withArgs(mintedId, user.address, adventureType, adventureContent);
 
-        const memoryNonce = Number(await permitVerifier.nextPermitNonce(mintedId));
+        const memoryNonce = Number(await lazbubu.nextPermitNonce(mintedId));
         const memoryContent = 67890;
         const memoryHash = solidityPackedKeccak256(["uint256", "uint256"], [mintedId, memoryContent]);
-        const memoryPermit = await signPermit(signer, memoryNonce, PERMIT_TYPE_CREATE_MEMORY, memoryHash, Math.floor(Date.now() / 1000) + 3600);
+        const memoryPermit = await signPermit(signer, memoryNonce, PERMIT_TYPE_CREATE_MEMORY, memoryHash, Math.floor(Date.now() / 1000) + 3600, await lazbubu.getAddress(), Number(chainId));
         await expect(lazbubu.createMemory(mintedId, memoryContent, memoryPermit))
             .to.emit(lazbubu, "MemoryCreated")
             .withArgs(mintedId, anyValue, user.address, memoryContent);
 
-        const memoryId = (await lazbubu.queryFilter(lazbubu.filters.MemoryCreated()))[0].args?.id;
-        await expect(lazbubu.deleteMemory(mintedId, memoryId)).to.emit(lazbubu, "MemoryDeleted").withArgs(mintedId, memoryId, user.address);
+        const memoryId = ((await lazbubu.queryFilter(lazbubu.filters.MemoryCreated()))[0] as any).args?.id;
+        await expect(lazbubu.connect(user).deleteMemory(mintedId, memoryId)).to.emit(lazbubu, "MemoryDeleted").withArgs(mintedId, memoryId, user.address);
     });
 
     it("should set personality with permit", async () => {
-        const { signer, user, lazbubu, permitVerifier } = await loadFixture(deployFixture);
-        const { mintedId } = await mintWithPermit(user, signer, lazbubu, permitVerifier);
+        const { signer, user, lazbubu } = await loadFixture(deployFixture);
+        const { mintedId } = await mintWithPermit(user, signer, lazbubu);
 
-        const nonce = Number(await permitVerifier.nextPermitNonce(mintedId));
+        const chainId = (await ethers.provider.getNetwork()).chainId;
+        const nonce = Number(await lazbubu.nextPermitNonce(mintedId));
         const personality = "Curious";
         const hash = solidityPackedKeccak256(["uint256", "string"], [mintedId, personality]);
-        const permit = await signPermit(signer, nonce, PERMIT_TYPE_SET_PERSONALITY, hash, Math.floor(Date.now() / 1000) + 3600);
+        const permit = await signPermit(signer, nonce, PERMIT_TYPE_SET_PERSONALITY, hash, Math.floor(Date.now() / 1000) + 3600, await lazbubu.getAddress(), Number(chainId));
 
         await expect(lazbubu.setPersonality(mintedId, personality, permit))
             .to.emit(lazbubu, "PersonalitySet")
@@ -122,13 +126,14 @@ describe("Lazbubu", () => {
     });
 
     it("should set level once and prevent further updates when mature", async () => {
-        const { signer, user, lazbubu, permitVerifier } = await loadFixture(deployFixture);
-        const { mintedId } = await mintWithPermit(user, signer, lazbubu, permitVerifier);
+        const { signer, user, lazbubu } = await loadFixture(deployFixture);
+        const { mintedId } = await mintWithPermit(user, signer, lazbubu);
 
-        const nonce = Number(await permitVerifier.nextPermitNonce(mintedId));
+        const chainId = (await ethers.provider.getNetwork()).chainId;
+        const nonce = Number(await lazbubu.nextPermitNonce(mintedId));
         const level = 3;
         const hash = solidityPackedKeccak256(["uint256", "uint8", "bool"], [mintedId, level, true]);
-        const permit = await signPermit(signer, nonce, PERMIT_TYPE_SET_LEVEL, hash, Math.floor(Date.now() / 1000) + 3600);
+        const permit = await signPermit(signer, nonce, PERMIT_TYPE_SET_LEVEL, hash, Math.floor(Date.now() / 1000) + 3600, await lazbubu.getAddress(), Number(chainId));
 
         await expect(lazbubu.setLevel(mintedId, level, true, permit))
             .to.emit(lazbubu, "LevelSet")
@@ -139,13 +144,13 @@ describe("Lazbubu", () => {
         expect(state.maturity).to.be.gt(0);
 
         const secondHash = solidityPackedKeccak256(["uint256", "uint8", "bool"], [mintedId, 4, false]);
-        const secondPermit = await signPermit(signer, Number(await permitVerifier.nextPermitNonce(mintedId)), PERMIT_TYPE_SET_LEVEL, secondHash, Math.floor(Date.now() / 1000) + 3600);
+        const secondPermit = await signPermit(signer, Number(await lazbubu.nextPermitNonce(mintedId)), PERMIT_TYPE_SET_LEVEL, secondHash, Math.floor(Date.now() / 1000) + 3600, await lazbubu.getAddress(), Number(chainId));
         await expect(lazbubu.setLevel(mintedId, 4, false, secondPermit)).to.be.revertedWithCustomError(lazbubu, "TokenAlreadyMature");
     });
 
     it("should handle message quota claims correctly", async () => {
-        const { signer, user, lazbubu, permitVerifier } = await loadFixture(deployFixture);
-        const { mintedId } = await mintWithPermit(user, signer, lazbubu, permitVerifier);
+        const { signer, user, lazbubu } = await loadFixture(deployFixture);
+        const { mintedId } = await mintWithPermit(user, signer, lazbubu);
 
         const firstTx = await lazbubu.connect(user).claimMessageQuota(mintedId);
         await expect(firstTx).to.emit(lazbubu, "MessageQuotaClaimed").withArgs(mintedId, user.address);
@@ -162,27 +167,28 @@ describe("Lazbubu", () => {
     });
 
     it("should block message quota claim from non-owner", async () => {
-        const { signer, user, deployer, lazbubu, permitVerifier } = await loadFixture(deployFixture);
-        const { mintedId } = await mintWithPermit(user, signer, lazbubu, permitVerifier);
+        const { signer, user, deployer, lazbubu } = await loadFixture(deployFixture);
+        const { mintedId } = await mintWithPermit(user, signer, lazbubu);
         await expect(lazbubu.claimMessageQuota(mintedId)).to.be.revertedWithCustomError(lazbubu, "NotTokenOwner");
         await expect(lazbubu.connect(deployer).claimMessageQuota(mintedId)).to.be.revertedWithCustomError(lazbubu, "NotTokenOwner");
     });
 
     it("should prevent transferring non-mature tokens and invalid amounts", async () => {
-        const { signer, user, lazbubu, permitVerifier } = await loadFixture(deployFixture);
-        const { mintedId } = await mintWithPermit(user, signer, lazbubu, permitVerifier);
+        const { signer, user, lazbubu } = await loadFixture(deployFixture);
+        const { mintedId } = await mintWithPermit(user, signer, lazbubu);
 
         await expect(lazbubu.connect(user).safeTransferFrom(user.address, signer.address, mintedId, 1, "0x")).to.be.revertedWithCustomError(lazbubu, "NonMatureTokenCannotBeTransferred");
         await expect(lazbubu.connect(user).safeTransferFrom(user.address, signer.address, mintedId, 0, "0x")).to.be.revertedWithCustomError(lazbubu, "InvalidAmount");
     });
 
     it("should allow transferring mature tokens", async () => {
-        const { signer, user, lazbubu, permitVerifier } = await loadFixture(deployFixture);
-        const { mintedId } = await mintWithPermit(user, signer, lazbubu, permitVerifier);
+        const { signer, user, lazbubu } = await loadFixture(deployFixture);
+        const { mintedId } = await mintWithPermit(user, signer, lazbubu);
 
-        const nonce = Number(await permitVerifier.nextPermitNonce(mintedId));
+        const chainId = (await ethers.provider.getNetwork()).chainId;
+        const nonce = Number(await lazbubu.nextPermitNonce(mintedId));
         const hash = solidityPackedKeccak256(["uint256", "uint8", "bool"], [mintedId, 1, true]);
-        const permit = await signPermit(signer, nonce, PERMIT_TYPE_SET_LEVEL, hash, Math.floor(Date.now() / 1000) + 3600);
+        const permit = await signPermit(signer, nonce, PERMIT_TYPE_SET_LEVEL, hash, Math.floor(Date.now() / 1000) + 3600, await lazbubu.getAddress(), Number(chainId));
         await lazbubu.setLevel(mintedId, 1, true, permit);
 
         await lazbubu.connect(user).safeTransferFrom(user.address, signer.address, mintedId, 1, "0x");
