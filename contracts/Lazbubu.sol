@@ -242,7 +242,7 @@ contract Lazbubu is ERC1155, EIP712 {
         if (permit.permitType != permitType) {
             revert InvalidPermitType();
         }
-        if (permit.expire != 0 && permit.expire <= block.timestamp) {
+        if (permit.expire < block.timestamp) {
             revert PermitExpired();
         }
         if (permit.dataHash != uint256(keccak256(params))) {
