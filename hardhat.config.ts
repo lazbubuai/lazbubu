@@ -44,6 +44,12 @@ const config: HardhatUserConfig = {
             accounts:
                 process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
         },
+        metissepolia: {
+            chainId: 59902,
+            url: process.env.RPC_URL || "https://sepolia.metisdevops.link",
+            accounts:
+                process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
+        },
     },
 
     etherscan: {
@@ -65,6 +71,14 @@ const config: HardhatUserConfig = {
                     browserURL: "https://testnet.bscscan.com/",
                 },
             },
+            {
+                network: "metissepolia",
+                chainId: 59902,
+                urls: {
+                    apiURL: "https://sepolia-explorer-api.metisdevops.link/api",
+                    browserURL: "https://sepolia-explorer.metisdevops.link/",
+                },
+            },
         ],
     },
 };
@@ -72,9 +86,12 @@ const config: HardhatUserConfig = {
 export default config;
 
 task("deploy", "Deploy the contract")
-    .addParam("signer", "The address of the signer")
+    .addOptionalParam("admin", "The address of the admin")
+    .addOptionalParam("signer", "The address of the signer")
     .addParam("uri", "The URI of the token")
-    .setAction(async (args: { signer: string, uri: string }, { ethers }) => {
-        const { lazbubu } = await deploy(ethers, args.signer, args.uri);
+    .setAction(async (args: { admin: string, signer: string, uri: string }, { ethers }) => {
+        const admin = args.admin || (await ethers.getSigners())[0].address;
+        const signer = args.signer || admin;
+        const { lazbubu } = await deploy(ethers, admin, signer, args.uri);
         console.log("Lazbubu deployed to:", lazbubu.target);
     });

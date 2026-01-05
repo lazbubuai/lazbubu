@@ -106,10 +106,11 @@ contract Lazbubu is ERC1155, EIP712 {
 
     /// @notice Initializes the contract with URI and EIP712 domain
     /// @param uri Base URI for token metadata
-    constructor(string memory uri) ERC1155(uri) EIP712("Lazbubu", "1") {
-        admin = signer = msg.sender;
-        emit AdminSet(msg.sender);
-        emit SignerSet(msg.sender);
+    constructor(string memory uri, address admin_, address signer_) ERC1155(uri) EIP712("Lazbubu", "1") {
+        admin = admin_;
+        signer = signer_;
+        emit AdminSet(admin_);
+        emit SignerSet(signer_);
     }
     
     /// @notice Mints a new token with permit authorization

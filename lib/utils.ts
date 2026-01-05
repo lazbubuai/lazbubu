@@ -29,17 +29,9 @@ export async function signPermit(signer: Signer, nonce: number, permitType: numb
     return { permitType, nonce, dataHash, expire, sig };
 }
 
-export async function deploy(ethers: HardhatEthersHelpers, signerAddress: string, uri: string) {
+export async function deploy(ethers: HardhatEthersHelpers, adminAddress: string, signerAddress: string, uri: string) {
     const Lazbubu = await ethers.getContractFactory("Lazbubu");
-    const lazbubu = await Lazbubu.deploy(uri);
-
-    // Set signer if different from deployer
-    const deployer = await ethers.getSigners();
-    if (deployer[0].address.toLowerCase() !== signerAddress.toLowerCase()) {
-        const txSetSigner = await lazbubu.setSigner(signerAddress);
-        console.log("Lazbubu setSigner tx:", txSetSigner.hash);
-        await txSetSigner.wait();
-    }
+    const lazbubu = await Lazbubu.deploy(uri, adminAddress, signerAddress);
 
     return { lazbubu };
 }

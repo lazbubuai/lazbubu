@@ -11,7 +11,7 @@ describe("Lazbubu", () => {
         const accounts = await ethers.getSigners();
         const [deployer, signer, user] = accounts;
 
-        const { lazbubu } = await deploy(ethers, signer.address, "https://lazbubu.com/token/{id}");
+        const { lazbubu } = await deploy(ethers, deployer.address, signer.address, "https://lazbubu.com/token/{id}");
 
         return { deployer, signer, user, lazbubu };
     }
